@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Paper Trader</title>
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0a0e17;
+            --surface: #111827;
+            --surface2: #1a2236;
+            --border: #1e2a3a;
+            --text: #e2e8f0;
+            --text-dim: #64748b;
+            --green: #22c55e;
+            --green-bg: rgba(34,197,94,0.1);
+            --red: #ef4444;
+            --red-bg: rgba(239,68,68,0.1);
+            --blue: #3b82f6;
+            --yellow: #eab308;
+            --purple: #a855f7;
+        }
+
+        body {
+            font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            overflow-x: hidden;
+        }
+
+        /* ── Header ──────────────────────────────────── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--blue);
+        }
+
+        .mode-badge {
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: var(--green-bg);
+            color: var(--green);
+            border: 1px solid var(--green);
+        }
+
+        .price-display {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--red);
+            display: inline-block;
+        }
+        .status-dot.connected { background: var(--green); animation: pulse 2s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .symbol-tag {
+            color: var(--yellow);
+            font-weight: 600;
+        }
+
+        /* ── Stats Row ───────────────────────────────── */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 1px;
+            background: var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .stat-card {
+            background: var(--surface);
+            padding: 14px 18px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .stat-value.positive { color: var(--green); }
+        .stat-value.negative { color: var(--red); }
+
+        /* ── Chart ───────────────────────────────────── */
+        #chart-container {
+            width: 100%;
+            height: 420px;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* ── Bottom Panels ───────────────────────────── */
+        .panels {
+            display: grid;
+            grid-template-columns: 280px 1fr 1fr;
+            gap: 1px;
+            background: var(--border);
+            min-height: 320px;
+        }
+
+        .panel {
+            background: var(--surface);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            padding: 10px 16px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--border);
+            background: var(--surface2);
+        }
+
+        .panel-body {
+            padding: 0;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        /* ── Indicators Panel ────────────────────────── */
+        .indicator-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .indicator-row:last-child { border-bottom: none; }
+
+        .ind-label { color: var(--text-dim); }
+        .ind-value { font-weight: 600; }
+
+        .trend-up { color: var(--green); }
+        .trend-down { color: var(--red); }
+
+        /* ── Positions Table ─────────────────────────── */
+        .pos-table, .trade-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .pos-table th, .trade-table th {
+            padding: 8px 12px;
+            text-align: left;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            background: var(--surface2);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+        }
+
+        .pos-table td, .trade-table td {
+            padding: 7px 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+        }
+
+        .side-long { color: var(--green); font-weight: 600; }
+        .side-short { color: var(--red); font-weight: 600; }
+
+        .pnl-positive { color: var(--green); font-weight: 600; }
+        .pnl-negative { color: var(--red); font-weight: 600; }
+
+        .reason-tag {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .reason-take_profit { background: var(--green-bg); color: var(--green); }
+        .reason-stop_loss { background: var(--red-bg); color: var(--red); }
+        .reason-trailing_stop { background: rgba(59,130,246,0.1); color: var(--blue); }
+
+        /* ── Activity Log ────────────────────────────── */
+        .activity-log {
+            padding: 0;
+        }
+
+        .log-entry {
+            padding: 6px 16px;
+            border-bottom: 1px solid var(--border);
+            font-size: 11px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .log-entry:last-child { border-bottom: none; }
+
+        .log-time {
+            color: var(--text-dim);
+            margin-right: 8px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .no-data {
+            padding: 20px;
+            text-align: center;
+            color: var(--text-dim);
+            font-style: italic;
+        }
+
+        /* ── Scrollbar ───────────────────────────────── */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--surface); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+        /* ── Responsive ──────────────────────────────── */
+        @media (max-width: 1200px) {
+            .stats-row { grid-template-columns: repeat(3, 1fr); }
+            .panels { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══ Header ═══════════════════════════════════════════════════════ -->
+<div class="header">
+    <div class="header-left">
+        <span class="logo">CryptoTrader</span>
+        <span class="mode-badge">{{ config.paper and 'P' or 'LIVE' }}</span>
+        <span class="symbol-tag" id="symbol">{{ config.symbol }}</span>
+    </div>
+    <div class="price-display" id="current-price">--</div>
+    <div class="header-right">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text" style="color: var(--text-dim); font-size: 11px;">Connecting...</span>
+    </div>
+</div>
+
+<!-- ═══ Stats Row ════════════════════════════════════════════════════ -->
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-label">Balance</div>
+        <div class="stat-value" id="stat-balance">$10,000.00</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Equity</div>
+        <div class="stat-value" id="stat-equity">$10,000.00</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Unrealized P&L</div>
+        <div class="stat-value" id="stat-unrealized">$0.00</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Realized P&L</div>
+        <div class="stat-value" id="stat-realized">$0.00</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Return</div>
+        <div class="stat-value" id="stat-return">0.000%</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Win Rate</div>
+        <div class="stat-value" id="stat-winrate">0.0%</div>
+    </div>
+</div>
+
+<!-- ═══ Chart ════════════════════════════════════════════════════════ -->
+<div id="chart-container"></div>
+
+<!-- ═══ Bottom Panels ════════════════════════════════════════════════ -->
+<div class="panels">
+
+    <!-- Indicators -->
+    <div class="panel">
+        <div class="panel-header">Indicators</div>
+        <div class="panel-body" id="indicators-panel">
+            <div class="no-data">Waiting for data...</div>
+        </div>
+    </div>
+
+    <!-- Open Positions -->
+    <div class="panel">
+        <div class="panel-header">Open Positions (<span id="pos-count">0</span>)</div>
+        <div class="panel-body" id="positions-panel">
+            <div class="no-data">No open positions</div>
+        </div>
+    </div>
+
+    <!-- Trade History + Activity -->
+    <div class="panel">
+        <div class="panel-header">Trade History (<span id="trade-count">0</span>)</div>
+        <div class="panel-body" id="trades-panel">
+            <div class="no-data">No trades yet</div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ JavaScript ═══════════════════════════════════════════════════ -->
+<script>
+// ── State ──────────────────────────────────────────────────────────
+let chart, candleSeries, emaFastLine, emaSlowLine, bbUpperLine, bbLowerLine;
+let connected = false;
+let updateCount = 0;
+
+// ── Chart Setup ────────────────────────────────────────────────────
+function initChart() {
+    if (typeof LightweightCharts === "undefined") {
+        console.warn("LightweightCharts not loaded; chart disabled");
+        return;
+    }
+    const container = document.getElementById("chart-container");
+
+    chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: container.clientHeight,
+        layout: {
+            backgroundColor: "#0a0e17",
+            textColor: "#64748b",
+            fontSize: 11,
+        },
+        grid: {
+            vertLines: { color: "#1e2a3a" },
+            horzLines: { color: "#1e2a3a" },
+        },
+        crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+            borderColor: "#1e2a3a",
+        },
+        timeScale: {
+            borderColor: "#1e2a3a",
+            timeVisible: true,
+            secondsVisible: false,
+        },
+    });
+
+    candleSeries = chart.addCandlestickSeries({
+        upColor: "#22c55e",
+        downColor: "#ef4444",
+        borderUpColor: "#22c55e",
+        borderDownColor: "#ef4444",
+        wickUpColor: "#22c55e",
+        wickDownColor: "#ef4444",
+    });
+
+    emaFastLine = chart.addLineSeries({
+        color: "#3b82f6",
+        lineWidth: 1,
+        title: "EMA 9",
+    });
+
+    emaSlowLine = chart.addLineSeries({
+        color: "#a855f7",
+        lineWidth: 1,
+        title: "EMA 21",
+    });
+
+    bbUpperLine = chart.addLineSeries({
+        color: "rgba(234,179,8,0.3)",
+        lineWidth: 1,
+        lineStyle: 2,
+        title: "BB Upper",
+    });
+
+    bbLowerLine = chart.addLineSeries({
+        color: "rgba(234,179,8,0.3)",
+        lineWidth: 1,
+        lineStyle: 2,
+        title: "BB Lower",
+    });
+
+    window.addEventListener("resize", () => {
+        chart.applyOptions({
+            width: container.clientWidth,
+            height: container.clientHeight,
+        });
+    });
+}
+
+// ── Update Handlers ────────────────────────────────────────────────
+function formatMoney(val) {
+    if (val == null) return "$0.00";
+    const sign = val >= 0 ? "" : "-";
+    return sign + "$" + Math.abs(val).toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
+function setPnlClass(el, val) {
+    el.classList.remove("positive", "negative");
+    if (val > 0) el.classList.add("positive");
+    else if (val < 0) el.classList.add("negative");
+}
+
+function updateStats(engine) {
+    if (!engine) return;
+
+    const balance = document.getElementById("stat-balance");
+    const equity = document.getElementById("stat-equity");
+    const unrealized = document.getElementById("stat-unrealized");
+    const realized = document.getElementById("stat-realized");
+    const returnEl = document.getElementById("stat-return");
+    const winrate = document.getElementById("stat-winrate");
+
+    balance.textContent = formatMoney(engine.balance);
+    equity.textContent = formatMoney(engine.equity);
+
+    unrealized.textContent = formatMoney(engine.unrealized_pnl);
+    setPnlClass(unrealized, engine.unrealized_pnl);
+
+    realized.textContent = formatMoney(engine.realized_pnl);
+    setPnlClass(realized, engine.realized_pnl);
+
+    const retPct = engine.return_pct != null ? engine.return_pct.toFixed(3) : "0.000";
+    returnEl.textContent = retPct + "%";
+    setPnlClass(returnEl, engine.return_pct || 0);
+
+    winrate.textContent = (engine.win_rate != null ? engine.win_rate.toFixed(1) : "0.0") + "%";
+}
+
+function updateChart(data) {
+    if (!data.candles || data.candles.length === 0) return;
+    if (!candleSeries || typeof candleSeries.setData !== "function") return;
+
+    // De-duplicate and sort candles
+    const seen = new Map();
+    for (const c of data.candles) {
+        seen.set(c.time, c);
+    }
+    const candles = Array.from(seen.values()).sort((a, b) => a.time - b.time);
+
+    try {
+        candleSeries.setData(candles);
+
+        // Overlays
+        if (data.overlays) {
+            if (data.overlays.ema_fast && data.overlays.ema_fast.length > 0)
+                emaFastLine.setData(data.overlays.ema_fast);
+            if (data.overlays.ema_slow && data.overlays.ema_slow.length > 0)
+                emaSlowLine.setData(data.overlays.ema_slow);
+            if (data.overlays.bb_upper && data.overlays.bb_upper.length > 0)
+                bbUpperLine.setData(data.overlays.bb_upper);
+            if (data.overlays.bb_lower && data.overlays.bb_lower.length > 0)
+                bbLowerLine.setData(data.overlays.bb_lower);
+        }
+
+        // Markers
+        if (data.markers && data.markers.length > 0) {
+            const sorted = [...data.markers].sort((a, b) => a.time - b.time);
+            candleSeries.setMarkers(sorted);
+        }
+
+        chart.timeScale().scrollToRealTime();
+    } catch (e) {
+        console.warn("Chart update error:", e);
+    }
+}
+
+function updateIndicators(ind) {
+    if (!ind || Object.keys(ind).length === 0) return;
+
+    const trendClass = ind.trend === "UP" ? "trend-up" : "trend-down";
+
+    document.getElementById("indicators-panel").innerHTML = `
+        <div class="indicator-row">
+            <span class="ind-label">Trend</span>
+            <span class="ind-value ${trendClass}">${ind.trend}</span>
+        </div>
+        <div class="indicator-row">
+            <span class="ind-label">EMA 9</span>
+            <span class="ind-value" style="color: #3b82f6">${ind.ema_fast != null ? ind.ema_fast.toLocaleString() : '--'}</span>
+        </div>
+        <div class="indicator-row">
+            <span class="ind-label">EMA 21</span>
+            <span class="ind-value" style="color: #a855f7">${ind.ema_slow != null ? ind.ema_slow.toLocaleString() : '--'}</span>
+        </div>
+        <div class="indicator-row">
+            <span class="ind-label">RSI</span>
+            <span class="ind-value ${ind.rsi < 35 ? 'trend-down' : ind.rsi > 65 ? 'trend-up' : ''}">${ind.rsi || '--'}</span>
+        </div>
+        <div class="indicator-row">
+            <span class="ind-label">BB Upper</span>
+            <span class="ind-value" style="color: var(--yellow)">${ind.bb_upper != null ? ind.bb_upper.toLocaleString() : '--'}</span>
+        </div>
+        <div class="indicator-row">
+            <span class="ind-label">BB Lower</span>
+            <span class="ind-value" style="color: var(--yellow)">${ind.bb_lower != null ? ind.bb_lower.toLocaleString() : '--'}</span>
+        </div>
+        <div class="indicator-row">
+            <span class="ind-label">ATR</span>
+            <span class="ind-value">${ind.atr != null ? ind.atr.toLocaleString() : '--'}</span>
+        </div>
+        <div class="indicator-row">
+            <span class="ind-label">ADX</span>
+            <span class="ind-value">${ind.adx != null ? ind.adx.toLocaleString() : '--'}</span>
+        </div>
+        <div class="indicator-row">
+            <span class="ind-label">Z-Score</span>
+            <span class="ind-value">${ind.z_score != null ? ind.z_score.toFixed(2) : '--'}</span>
+        </div>
+        <div class="indicator-row">
+            <span class="ind-label">Regime</span>
+            <span class="ind-value">${ind.regime || '--'}</span>
+        </div>
+    `;
+}
+
+function updatePositions(positions) {
+    const container = document.getElementById("positions-panel");
+    document.getElementById("pos-count").textContent = positions ? positions.length : 0;
+
+    if (!positions || positions.length === 0) {
+        container.innerHTML = '<div class="no-data">No open positions</div>';
+        return;
+    }
+
+    let html = `<table class="pos-table">
+        <thead><tr>
+            <th>ID</th><th>Side</th><th>Entry</th><th>Size</th><th>SL</th><th>TP</th><th>UPnL</th>
+        </tr></thead><tbody>`;
+
+    for (const p of positions) {
+        const sideClass = p.side === "long" ? "side-long" : "side-short";
+        const pnlClass = p.unrealized_pnl >= 0 ? "pnl-positive" : "pnl-negative";
+        html += `<tr>
+            <td>${p.id}</td>
+            <td class="${sideClass}">${p.side.toUpperCase()}</td>
+            <td>${p.entry_price.toLocaleString()}</td>
+            <td>${p.size.toFixed(6)}</td>
+            <td>${p.stop_loss.toLocaleString()}</td>
+            <td>${p.take_profit.toLocaleString()}</td>
+            <td class="${pnlClass}">${formatMoney(p.unrealized_pnl)}</td>
+        </tr>`;
+    }
+
+    html += "</tbody></table>";
+    container.innerHTML = html;
+}
+
+function updateTrades(trades) {
+    const container = document.getElementById("trades-panel");
+    document.getElementById("trade-count").textContent = trades ? trades.length : 0;
+
+    if (!trades || trades.length === 0) {
+        container.innerHTML = '<div class="no-data">No trades yet</div>';
+        return;
+    }
+
+    let html = `<table class="trade-table">
+        <thead><tr>
+            <th>ID</th><th>Side</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Reason</th>
+        </tr></thead><tbody>`;
+
+    for (const t of [...trades].reverse()) {
+        const sideClass = t.side === "long" ? "side-long" : "side-short";
+        const pnlClass = t.pnl >= 0 ? "pnl-positive" : "pnl-negative";
+        const reasonClass = "reason-" + t.reason;
+        html += `<tr>
+            <td>${t.id}</td>
+            <td class="${sideClass}">${t.side.toUpperCase()}</td>
+            <td>${t.entry_price.toLocaleString()}</td>
+            <td>${t.exit_price.toLocaleString()}</td>
+            <td class="${pnlClass}">${formatMoney(t.pnl)}</td>
+            <td><span class="reason-tag ${reasonClass}">${t.reason.replace('_',' ')}</span></td>
+        </tr>`;
+    }
+
+    html += "</tbody></table>";
+    container.innerHTML = html;
+}
+
+// ── Process Update (shared by both REST and WebSocket) ─────────────
+function processUpdate(data) {
+    if (!data) return;
+    updateCount++;
+
+    // Price
+    if (data.price > 0) {
+        document.getElementById("current-price").textContent =
+            "$" + data.price.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    }
+
+    // Stats
+    if (data.engine) {
+        updateStats(data.engine);
+        updatePositions(data.engine.positions || []);
+        updateTrades(data.engine.trades || []);
+    }
+
+    // Chart
+    updateChart(data);
+
+    // Indicators
+    if (data.indicators) {
+        updateIndicators(data.indicators);
+    }
+
+    // Update status
+    document.getElementById("status-dot").classList.add("connected");
+    document.getElementById("status-text").textContent = "Live (" + updateCount + " updates)";
+}
+
+// ── REST Polling (primary, always reliable) ────────────────────────
+async function fetchState() {
+    try {
+        const resp = await fetch("/api/state");
+        if (resp.ok) {
+            const data = await resp.json();
+            processUpdate(data);
+        }
+    } catch (e) {
+        document.getElementById("status-dot").classList.remove("connected");
+        document.getElementById("status-text").textContent = "Reconnecting...";
+    }
+}
+
+// ── WebSocket (bonus: lower latency updates) ───────────────────────
+try {
+    const socket = io();
+    socket.on("update", (data) => { processUpdate(data); });
+    socket.on("connect", () => { console.log("WebSocket connected"); });
+    socket.on("error", (data) => { console.error("Server error:", data.msg); });
+} catch (e) {
+    console.warn("WebSocket not available, using REST polling only");
+}
+
+// ── Init ───────────────────────────────────────────────────────────
+initChart();
+
+// Fetch immediately on load, then poll every 3 seconds
+fetchState();
+setInterval(fetchState, 3000);
+</script>
+</body>
+</html>

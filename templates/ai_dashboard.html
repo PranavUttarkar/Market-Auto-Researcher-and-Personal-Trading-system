@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ATLAS AI Hedge Fund</title>
+<style>
+/* ── Reset & Variables ─────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#06060f;--surface:#0d0d1f;--card:#13132b;--border:#1e1e3f;
+  --text:#e2e8f0;--muted:#64748b;--accent:#7c3aed;--accent2:#a78bfa;
+  --green:#22c55e;--red:#ef4444;--blue:#3b82f6;--amber:#f59e0b;
+  --gold:#fbbf24;--cyan:#06b6d4;
+  --radius:12px;--glow:0 0 20px rgba(124,58,237,.15);
+}
+body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+a{color:var(--accent2);text-decoration:none}
+
+/* ── Header ────────────────────────────────────────────────── */
+.header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;background:linear-gradient(135deg,#0d0d1f 0%,#1a0a2e 100%);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+.header .logo{font-size:22px;font-weight:800;letter-spacing:3px;background:linear-gradient(135deg,var(--accent),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .subtitle{font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-left:12px}
+.header .aum{font-size:20px;font-weight:700;color:var(--text)}
+.header .aum small{font-size:11px;color:var(--muted);display:block;text-align:right}
+.status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+.status.disconnected .dot{background:var(--red);animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── P&L Breakdown ─────────────────────────────────────────── */
+.pnl-section{padding:16px 28px 0}
+.pnl-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.pnl-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden}
+.pnl-card::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;border-radius:2px 0 0 2px}
+.pnl-card.unrealized::before{background:var(--amber)}
+.pnl-card.realized::before{background:var(--blue)}
+.pnl-card.total::before{background:var(--accent)}
+.pnl-card .pnl-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px}
+.pnl-card .pnl-value{font-size:26px;font-weight:800}
+.pnl-card .pnl-sub{font-size:11px;color:var(--muted);margin-top:4px}
+.pnl-card .pnl-value.positive{color:var(--green)}
+.pnl-card .pnl-value.negative{color:var(--red)}
+
+/* ── Metrics Row ───────────────────────────────────────────── */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;padding:12px 28px}
+.metric{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;text-align:center;transition:transform .2s}
+.metric:hover{transform:translateY(-2px);box-shadow:var(--glow)}
+.metric .label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px}
+.metric .value{font-size:20px;font-weight:700}
+.metric .value.positive{color:var(--green)}
+.metric .value.negative{color:var(--red)}
+
+/* ── Main Grid ─────────────────────────────────────────────── */
+.main{display:grid;grid-template-columns:280px 1fr 260px;gap:16px;padding:0 28px 16px;min-height:500px}
+@media(max-width:1200px){.main{grid-template-columns:1fr}}
+
+/* ── Agent Cards (left) ────────────────────────────────────── */
+.agents-panel{display:flex;flex-direction:column;gap:10px}
+.agents-panel h3{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.agent-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;transition:border-color .3s}
+.agent-card:hover{border-color:var(--accent)}
+.agent-card .agent-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.agent-card .agent-name{font-weight:700;font-size:14px}
+.agent-card .agent-badge{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.agent-card .agent-badge.bullish{background:rgba(34,197,94,.15);color:var(--green)}
+.agent-card .agent-badge.bearish{background:rgba(239,68,68,.15);color:var(--red)}
+.agent-card .agent-badge.neutral{background:rgba(100,116,139,.15);color:var(--muted)}
+.agent-card .agent-focus{font-size:11px;color:var(--muted);margin-bottom:6px}
+.agent-card .agent-reasoning{font-size:12px;color:var(--text);opacity:.85;line-height:1.4;max-height:40px;overflow:hidden;text-overflow:ellipsis}
+.agent-card .agent-stats{display:flex;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--muted)}
+.agent-card .agent-pnl{font-weight:700}
+
+/* ── Center Panel (chart + instruments) ────────────────────── */
+.center{display:flex;flex-direction:column;gap:12px}
+.chart-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;flex:1;min-height:350px;position:relative}
+.chart-box .chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.chart-box .chart-title{font-size:13px;font-weight:600}
+.chart-box .chart-price{font-size:18px;font-weight:700}
+#chart-container{width:100%;height:320px}
+.instruments-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.inst-tile{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:10px;text-align:center;transition:border-color .3s}
+.inst-tile:hover{border-color:var(--accent)}
+.inst-tile .inst-symbol{font-weight:700;font-size:13px}
+.inst-tile .inst-class{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px}
+.inst-tile .inst-class.crypto{color:var(--amber)}
+.inst-tile .inst-class.stock{color:var(--blue)}
+.inst-tile .inst-class.gold{color:var(--gold)}
+.inst-tile .inst-price{font-size:16px;font-weight:700}
+
+/* ── Risk Panel (right) ────────────────────────────────────── */
+.risk-panel{display:flex;flex-direction:column;gap:10px}
+.risk-panel h3{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.risk-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.risk-card .risk-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px}
+.risk-card .risk-value{font-size:18px;font-weight:700}
+.risk-bar{height:6px;background:var(--border);border-radius:3px;margin-top:8px;overflow:hidden}
+.risk-bar .fill{height:100%;border-radius:3px;transition:width .5s ease}
+.alloc-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.alloc-section h4{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px}
+.alloc-bar{display:flex;align-items:center;margin-bottom:6px;font-size:12px;gap:8px}
+.alloc-bar .alloc-name{width:60px;text-align:right;color:var(--muted)}
+.alloc-bar .alloc-track{flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden}
+.alloc-bar .alloc-fill{height:100%;border-radius:4px;transition:width .5s}
+.alloc-bar .alloc-pct{width:36px;font-weight:600}
+
+/* ── Bottom sections ───────────────────────────────────────── */
+.bottom{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 28px 16px}
+@media(max-width:900px){.bottom{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;max-height:340px;overflow-y:auto}
+.panel h3{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;position:sticky;top:0;background:var(--card);padding-bottom:4px}
+
+/* ── Positions table ───────────────────────────────────────── */
+.positions-section{padding:0 28px 16px}
+.positions-section .panel{max-height:260px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:6px 8px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);position:sticky;top:24px;background:var(--card)}
+td{padding:6px 8px;border-bottom:1px solid rgba(30,30,63,.5)}
+tr:hover td{background:rgba(124,58,237,.05)}
+.side-long{color:var(--green);font-weight:600}
+.side-short{color:var(--red);font-weight:600}
+
+/* ── AI Feed ───────────────────────────────────────────────── */
+.feed-item{padding:10px 0;border-bottom:1px solid rgba(30,30,63,.5);font-size:12px}
+.feed-item:last-child{border:none}
+.feed-meta{display:flex;gap:8px;align-items:center;margin-bottom:4px}
+.feed-agent{font-weight:700;font-size:11px;padding:1px 6px;border-radius:4px;background:rgba(124,58,237,.2);color:var(--accent2)}
+.feed-symbol{color:var(--cyan);font-size:11px}
+.feed-bias{font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px}
+.feed-bias.bullish{background:rgba(34,197,94,.15);color:var(--green)}
+.feed-bias.bearish{background:rgba(239,68,68,.15);color:var(--red)}
+.feed-bias.neutral{background:rgba(100,116,139,.15);color:var(--muted)}
+.feed-time{font-size:10px;color:var(--muted);margin-left:auto}
+.feed-text{color:var(--text);opacity:.8;line-height:1.4}
+
+/* ── Trade History ─────────────────────────────────────────── */
+.trade-pnl{font-weight:700}
+.trade-pnl.positive{color:var(--green)}
+.trade-pnl.negative{color:var(--red)}
+
+/* ── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── Footer ────────────────────────────────────────────────── */
+.footer{text-align:center;padding:16px;font-size:10px;color:var(--muted);letter-spacing:1px}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<div class="header">
+  <div style="display:flex;align-items:baseline">
+    <div class="logo">ATLAS</div>
+    <div class="subtitle">AI HEDGE FUND</div>
+  </div>
+  <div class="aum">
+    <span id="aum">$300.00</span>
+    <small>PAPER TRADING</small>
+  </div>
+  <div class="status" id="conn-status">
+    <span class="dot"></span>
+    <span id="conn-text">Connecting…</span>
+  </div>
+</div>
+
+<!-- ═══════════════ P&L BREAKDOWN ═══════════════ -->
+<div class="pnl-section">
+  <div class="pnl-row">
+    <div class="pnl-card unrealized">
+      <div class="pnl-label">Unrealized P&L</div>
+      <div class="pnl-value" id="pnl-unrealized">$0.00</div>
+      <div class="pnl-sub" id="pnl-unrealized-sub">0 open positions</div>
+    </div>
+    <div class="pnl-card realized">
+      <div class="pnl-label">Realized P&L</div>
+      <div class="pnl-value" id="pnl-realized">$0.00</div>
+      <div class="pnl-sub" id="pnl-realized-sub">0 closed trades</div>
+    </div>
+    <div class="pnl-card total">
+      <div class="pnl-label">Total P&L</div>
+      <div class="pnl-value" id="pnl-total">$0.00</div>
+      <div class="pnl-sub" id="pnl-total-sub">0.00% return</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ METRICS ═══════════════ -->
+<div class="metrics">
+  <div class="metric"><div class="label">Equity</div><div class="value" id="m-equity">$300.00</div></div>
+  <div class="metric"><div class="label">Return</div><div class="value" id="m-return">0.00%</div></div>
+  <div class="metric"><div class="label">Win Rate</div><div class="value" id="m-winrate">—</div></div>
+  <div class="metric"><div class="label">Open Positions</div><div class="value" id="m-positions">0</div></div>
+  <div class="metric"><div class="label">Closed Trades</div><div class="value" id="m-trades">0</div></div>
+  <div class="metric"><div class="label">AI Calls</div><div class="value" id="m-ai">0</div></div>
+</div>
+
+<!-- ═══════════════ MAIN GRID ═══════════════ -->
+<div class="main">
+
+  <!-- Left: Agents -->
+  <div class="agents-panel">
+    <h3>AI Agents</h3>
+    <div id="agent-cards">
+      <!-- Warren -->
+      <div class="agent-card" id="agent-warren">
+        <div class="agent-header">
+          <span class="agent-name">&#x1F3E6; Warren</span>
+          <span class="agent-badge neutral" id="badge-warren">NEUTRAL</span>
+        </div>
+        <div class="agent-focus">DCF + supported theses — open universe</div>
+        <div class="agent-reasoning" id="reason-warren">Waiting for market data…</div>
+        <div class="agent-stats">
+          <span>Conv: <b id="conv-warren">0</b>/10</span>
+          <span class="agent-pnl" id="pnl-warren">$0.00</span>
+        </div>
+      </div>
+      <!-- Quant -->
+      <div class="agent-card" id="agent-quant">
+        <div class="agent-header">
+          <span class="agent-name">&#x1F4CA; Quant</span>
+          <span class="agent-badge neutral" id="badge-quant">NEUTRAL</span>
+        </div>
+        <div class="agent-focus">Donchian + TS momentum — 1d/4h</div>
+        <div class="agent-reasoning" id="reason-quant">Waiting for market data…</div>
+        <div class="agent-stats">
+          <span>Conv: <b id="conv-quant">0</b>/10</span>
+          <span class="agent-pnl" id="pnl-quant">$0.00</span>
+        </div>
+      </div>
+      <!-- Macro -->
+      <div class="agent-card" id="agent-macro">
+        <div class="agent-header">
+          <span class="agent-name">&#x1F30D; Macro</span>
+          <span class="agent-badge neutral" id="badge-macro">NEUTRAL</span>
+        </div>
+        <div class="agent-focus">Oil, trucking, AI memory, power, gold</div>
+        <div class="agent-reasoning" id="reason-macro">Waiting for market data…</div>
+        <div class="agent-stats">
+          <span>Conv: <b id="conv-macro">0</b>/10</span>
+          <span class="agent-pnl" id="pnl-macro">$0.00</span>
+        </div>
+      </div>
+      <!-- Satoshi -->
+      <div class="agent-card" id="agent-satoshi">
+        <div class="agent-header">
+          <span class="agent-name">&#x20BF; Satoshi</span>
+          <span class="agent-badge neutral" id="badge-satoshi">NEUTRAL</span>
+        </div>
+        <div class="agent-focus">BTC/ETH 1d+4h trend — not 5m</div>
+        <div class="agent-reasoning" id="reason-satoshi">Waiting for market data…</div>
+        <div class="agent-stats">
+          <span>Conv: <b id="conv-satoshi">0</b>/10</span>
+          <span class="agent-pnl" id="pnl-satoshi">$0.00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Center: Chart + Instruments -->
+  <div class="center">
+    <div class="chart-box">
+      <div class="chart-header">
+        <span class="chart-title" id="chart-title">Equity Curve</span>
+        <span class="chart-price" id="chart-equity">$300</span>
+      </div>
+      <div id="chart-container"></div>
+    </div>
+    <div class="instruments-grid" id="instruments-grid">
+      <!-- filled by JS -->
+    </div>
+  </div>
+
+  <!-- Right: Risk + Allocation -->
+  <div class="risk-panel">
+    <h3>Risk Metrics</h3>
+    <div class="risk-card">
+      <div class="risk-label">Max Drawdown</div>
+      <div class="risk-value" id="risk-dd">0.0%</div>
+      <div class="risk-bar"><div class="fill" id="dd-bar" style="width:0%;background:var(--green)"></div></div>
+    </div>
+    <div class="risk-card">
+      <div class="risk-label">Exposure</div>
+      <div class="risk-value" id="risk-exp">0.0%</div>
+      <div class="risk-bar"><div class="fill" id="exp-bar" style="width:0%;background:var(--blue)"></div></div>
+    </div>
+    <div class="risk-card">
+      <div class="risk-label">Cash Balance</div>
+      <div class="risk-value" id="risk-bal">$300.00</div>
+    </div>
+
+    <div class="alloc-section">
+      <h4>Agent Allocation</h4>
+      <div class="alloc-bar"><span class="alloc-name">Warren</span><div class="alloc-track"><div class="alloc-fill" id="alloc-warren" style="width:25%;background:var(--blue)"></div></div><span class="alloc-pct" id="allocpct-warren">25%</span></div>
+      <div class="alloc-bar"><span class="alloc-name">Quant</span><div class="alloc-track"><div class="alloc-fill" id="alloc-quant" style="width:25%;background:var(--accent)"></div></div><span class="alloc-pct" id="allocpct-quant">25%</span></div>
+      <div class="alloc-bar"><span class="alloc-name">Macro</span><div class="alloc-track"><div class="alloc-fill" id="alloc-macro" style="width:20%;background:var(--gold)"></div></div><span class="alloc-pct" id="allocpct-macro">20%</span></div>
+      <div class="alloc-bar"><span class="alloc-name">Satoshi</span><div class="alloc-track"><div class="alloc-fill" id="alloc-satoshi" style="width:30%;background:var(--amber)"></div></div><span class="alloc-pct" id="allocpct-satoshi">30%</span></div>
+    </div>
+
+    <div class="risk-card" style="margin-top:8px">
+      <div class="risk-label">AI API Calls</div>
+      <div class="risk-value" id="risk-ai-calls">0</div>
+    </div>
+    <div class="risk-card">
+      <div class="risk-label">AI Errors</div>
+      <div class="risk-value" id="risk-ai-errors" style="color:var(--red)">0</div>
+    </div>
+    <div class="risk-card">
+      <div class="risk-label">News Searches</div>
+      <div class="risk-value" id="risk-news" style="color:var(--cyan)">0</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ POSITIONS ═══════════════ -->
+<div class="positions-section">
+  <div class="panel">
+    <h3>Open Positions</h3>
+    <table>
+      <thead><tr><th>ID</th><th>Agent</th><th>Symbol</th><th>Side</th><th>Entry</th><th>Size</th><th>SL</th><th>TP</th><th>Unreal. P&L</th></tr></thead>
+      <tbody id="positions-body"><tr><td colspan="9" style="color:var(--muted);text-align:center;padding:20px">No open positions</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════ RESEARCH NOTEBOOK ═══════════════ -->
+<div class="bottom">
+  <div class="panel">
+    <h3>Research notebook (hypotheses survive ticks)</h3>
+    <table>
+      <thead><tr><th>Status</th><th>Elo</th><th>Tickers</th><th>Claim</th><th>Critique</th></tr></thead>
+      <tbody id="notebook-body"><tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">Desk has not run a cycle yet</td></tr></tbody>
+    </table>
+  </div>
+  <div class="panel">
+    <h3>Playbook + crowd</h3>
+    <div id="skills-box" style="font-size:12px;color:var(--muted);margin-bottom:12px">Skills accumulate after supported claims.</div>
+    <div id="crowd-box" style="font-size:12px"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ BOTTOM: AI Feed + Trades ═══════════════ -->
+<div class="bottom">
+  <div class="panel" id="ai-feed-panel">
+    <h3>AI Reasoning Feed</h3>
+    <div id="ai-feed"><div class="feed-item"><div class="feed-text" style="color:var(--muted)">Waiting for AI analysis…</div></div></div>
+  </div>
+  <div class="panel">
+    <h3>Trade History (Realized P&L)</h3>
+    <table>
+      <thead><tr><th>ID</th><th>Agent</th><th>Side</th><th>Entry</th><th>Exit</th><th>Real. P&L</th><th>Reason</th></tr></thead>
+      <tbody id="trades-body"><tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">No closed trades yet</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="footer">ATLAS AI HEDGE FUND &mdash; PAPER TRADING MODE &mdash; NOT FINANCIAL ADVICE</div>
+
+<!-- ═══════════════ SCRIPTS ═══════════════ -->
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ── Chart setup ─────────────────────────────────────── */
+const chartEl = document.getElementById("chart-container");
+const chart = LightweightCharts.createChart(chartEl, {
+  width: chartEl.clientWidth, height: 320,
+  layout:{background:{type:"solid",color:"#13132b"},textColor:"#64748b",fontSize:11},
+  grid:{vertLines:{color:"#1e1e3f"},horzLines:{color:"#1e1e3f"}},
+  crosshair:{mode:0},
+  rightPriceScale:{borderColor:"#1e1e3f"},
+  timeScale:{borderColor:"#1e1e3f",timeVisible:true,secondsVisible:false},
+});
+const equitySeries = chart.addLineSeries({color:"#7c3aed",lineWidth:2,crosshairMarkerVisible:true});
+new ResizeObserver(()=>{chart.applyOptions({width:chartEl.clientWidth})}).observe(chartEl);
+
+/* ── State ───────────────────────────────────────────── */
+let peakEquity = 300;
+const AGENTS = ["warren","quant","macro","satoshi"];
+
+/* ── Helpers ─────────────────────────────────────────── */
+function $(id){return document.getElementById(id)}
+function fmt(n,d=2){return n.toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d})}
+function fmtPnl(n){return (n>=0?"+":"")+("$"+fmt(n));}
+function signClass(n){return n>=0?"positive":"negative"}
+function timeAgo(ts){
+  const s=Math.floor(Date.now()/1000-ts);
+  if(s<60)return s+"s ago";if(s<3600)return Math.floor(s/60)+"m ago";
+  return Math.floor(s/3600)+"h ago";
+}
+
+/* ── Update UI ───────────────────────────────────────── */
+function updateDashboard(d){
+  if(!d||!d.engine) return;
+  const e = d.engine;
+
+  // ── P&L Breakdown (top cards) ──
+  const unrealPnl = e.unrealized_pnl || 0;
+  const realPnl   = e.realized_pnl || 0;
+  const totalPnl  = e.total_pnl || 0;
+
+  $("pnl-unrealized").textContent = fmtPnl(unrealPnl);
+  $("pnl-unrealized").className = "pnl-value "+signClass(unrealPnl);
+  $("pnl-unrealized-sub").textContent = e.open_positions+" open position"+(e.open_positions!==1?"s":"");
+
+  $("pnl-realized").textContent = fmtPnl(realPnl);
+  $("pnl-realized").className = "pnl-value "+signClass(realPnl);
+  $("pnl-realized-sub").textContent = e.total_trades+" closed trade"+(e.total_trades!==1?"s":"");
+
+  $("pnl-total").textContent = fmtPnl(totalPnl);
+  $("pnl-total").className = "pnl-value "+signClass(totalPnl);
+  $("pnl-total-sub").textContent = (e.return_pct>=0?"+":"")+e.return_pct.toFixed(2)+"% return";
+
+  // ── Header AUM ──
+  $("aum").textContent = "$"+fmt(e.equity);
+
+  // ── Metrics row ──
+  $("m-equity").textContent = "$"+fmt(e.equity);
+  $("m-return").textContent = (e.return_pct>=0?"+":"")+e.return_pct.toFixed(2)+"%";
+  $("m-return").className = "value "+signClass(e.return_pct);
+  $("m-winrate").textContent = e.total_trades>0?e.win_rate.toFixed(1)+"%":"—";
+  $("m-positions").textContent = e.open_positions;
+  $("m-trades").textContent = e.total_trades;
+  $("m-ai").textContent = d.ai_calls||0;
+
+  // ── Chart (equity curve) ──
+  if(e.equity_curve && e.equity_curve.length){
+    const pts = e.equity_curve.map(p=>({time:Math.floor(p.time),value:p.equity}));
+    equitySeries.setData(pts);
+    $("chart-equity").textContent = "$"+fmt(e.equity);
+  }
+
+  // ── Drawdown ──
+  if(e.equity > peakEquity) peakEquity = e.equity;
+  const dd = peakEquity>0?((peakEquity-e.equity)/peakEquity*100):0;
+  $("risk-dd").textContent = dd.toFixed(1)+"%";
+  const ddBar = $("dd-bar");
+  ddBar.style.width = Math.min(dd*10,100)+"%";
+  ddBar.style.background = dd>5?"var(--red)":dd>2?"var(--amber)":"var(--green)";
+
+  // ── Exposure ──
+  const posCost = e.positions.reduce((s,p)=>s+p.cost,0);
+  const expPct = e.equity>0?(posCost/e.equity*100):0;
+  $("risk-exp").textContent = expPct.toFixed(1)+"%";
+  $("exp-bar").style.width = Math.min(expPct,100)+"%";
+
+  // ── Balance ──
+  $("risk-bal").textContent = "$"+fmt(e.balance);
+
+  // ── AI stats ──
+  $("risk-ai-calls").textContent = d.ai_calls||0;
+  $("risk-ai-errors").textContent = d.ai_errors||0;
+  $("risk-news").textContent = d.news_searches||0;
+
+  // ── Agents ──
+  if(d.agents){
+    AGENTS.forEach(a=>{
+      const ag = d.agents[a];
+      if(!ag) return;
+      const badge = $("badge-"+a);
+      badge.textContent = (ag.bias||"neutral").toUpperCase();
+      badge.className = "agent-badge "+(ag.bias||"neutral");
+      $("reason-"+a).textContent = ag.reasoning||"Analysing…";
+      $("conv-"+a).textContent = ag.conviction||0;
+      const pnl = ag.pnl||0;
+      const pnlEl = $("pnl-"+a);
+      pnlEl.textContent = fmtPnl(pnl);
+      pnlEl.style.color = pnl>=0?"var(--green)":"var(--red)";
+    });
+  }
+
+  // ── Allocation ──
+  if(d.allocator_weights){
+    AGENTS.forEach(a=>{
+      const w = d.allocator_weights[a]||0;
+      const pct = (w*100).toFixed(0)+"%";
+      const fill = $(("alloc-"+a));
+      if(fill) fill.style.width = (w*100)+"%";
+      const txt = $("allocpct-"+a);
+      if(txt) txt.textContent = pct;
+    });
+  }
+
+  // ── Instruments ──
+  if(d.instruments){
+    const grid = $("instruments-grid");
+    grid.innerHTML = "";
+    d.instruments.forEach(i=>{
+      const div = document.createElement("div");
+      div.className = "inst-tile";
+      const priceStr = i.price>=1000?"$"+fmt(i.price,0):"$"+fmt(i.price);
+      div.innerHTML = `<div class="inst-class ${i.asset_class}">${i.asset_class}</div>`
+        +`<div class="inst-symbol">${i.symbol}</div>`
+        +`<div class="inst-price">${priceStr}</div>`;
+      grid.appendChild(div);
+    });
+  }
+
+  // ── Positions (unrealized P&L) ──
+  const pb = $("positions-body");
+  if(e.positions.length===0){
+    pb.innerHTML='<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:20px">No open positions</td></tr>';
+  } else {
+    pb.innerHTML = e.positions.map(p=>{
+      const sc = p.side==="long"?"side-long":"side-short";
+      const pnlC = p.unrealized_pnl>=0?"positive":"negative";
+      return `<tr><td>${p.id}</td><td>${p.agent_id||"—"}</td><td>${p.symbol}</td>`
+        +`<td class="${sc}">${p.side.toUpperCase()}</td>`
+        +`<td>$${fmt(p.entry_price)}</td><td>${p.size.toFixed(4)}</td>`
+        +`<td>$${fmt(p.stop_loss)}</td><td>$${fmt(p.take_profit)}</td>`
+        +`<td class="trade-pnl ${pnlC}">${fmtPnl(p.unrealized_pnl)}</td></tr>`;
+    }).join("");
+  }
+
+  // ── AI reasoning feed ──
+  if(d.reasoning_feed && d.reasoning_feed.length){
+    const feed = $("ai-feed");
+    feed.innerHTML = d.reasoning_feed.slice(0,20).map(r=>{
+      const biasC = r.bias||"neutral";
+      return `<div class="feed-item">`
+        +`<div class="feed-meta">`
+        +`<span class="feed-agent">${r.agent}</span>`
+        +`<span class="feed-symbol">${r.symbol||""}</span>`
+        +`<span class="feed-bias ${biasC}">${biasC}</span>`
+        +`<span class="feed-time">${timeAgo(r.time)}</span>`
+        +`</div><div class="feed-text">${r.text}</div></div>`;
+    }).join("");
+  }
+
+  // ── Research notebook ──
+  const nb = $("notebook-body");
+  if(nb && d.research && d.research.notebook){
+    const rows = d.research.notebook;
+    if(!rows.length){
+      nb.innerHTML='<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">No hypotheses yet</td></tr>';
+    } else {
+      nb.innerHTML = rows.map(h=>{
+        const st = h.status||"open";
+        return `<tr><td>${st}</td><td>${h.elo}</td><td>${(h.tickers||[]).join(", ")}</td>`
+          +`<td>${(h.claim||"").slice(0,160)}</td>`
+          +`<td>${(h.last_critique||"").slice(0,120)}</td></tr>`;
+      }).join("");
+    }
+    const sk = $("skills-box");
+    if(sk){
+      const skills = d.research.skills||[];
+      sk.innerHTML = skills.slice(0,6).map(s=>
+        `<div><b>${s.name}</b> · uses ${s.uses} wins ${s.wins}<br><span style="color:var(--muted)">${s.description||""}</span></div>`
+      ).join("") || "No skills yet";
+    }
+    const cb = $("crowd-box");
+    if(cb){
+      const crowd = d.research.crowd||[];
+      cb.innerHTML = crowd.slice(0,10).map(c=>
+        `<span class="inst-symbol" style="margin-right:10px">${c.ticker}×${c.mentions}</span>`
+      ).join("") || "No crowd hits";
+    }
+  }
+
+  // ── Trade history (realized P&L) ──
+  const tb = $("trades-body");
+  if(e.trades.length===0){
+    tb.innerHTML='<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">No closed trades yet</td></tr>';
+  } else {
+    tb.innerHTML = e.trades.slice().reverse().map(t=>{
+      const sc = t.side==="long"?"side-long":"side-short";
+      const pnlC = t.pnl>=0?"positive":"negative";
+      return `<tr><td>${t.id}</td><td>${t.agent_id||"—"}</td>`
+        +`<td class="${sc}">${t.side.toUpperCase()}</td>`
+        +`<td>$${fmt(t.entry_price)}</td><td>$${fmt(t.exit_price)}</td>`
+        +`<td class="trade-pnl ${pnlC}">${fmtPnl(t.pnl)}</td>`
+        +`<td>${t.reason}</td></tr>`;
+    }).join("");
+  }
+}
+
+/* ── Socket.IO ───────────────────────────────────────── */
+const socket = io();
+socket.on("connect",()=>{
+  $("conn-status").className="status";
+  $("conn-text").textContent="Connected";
+});
+socket.on("disconnect",()=>{
+  $("conn-status").className="status disconnected";
+  $("conn-text").textContent="Disconnected";
+});
+socket.on("update", updateDashboard);
+socket.on("error", d=>{console.error("Server error:",d.msg)});
+
+/* ── REST fallback poll ──────────────────────────────── */
+setInterval(()=>{
+  fetch("/api/state").then(r=>r.json()).then(updateDashboard).catch(()=>{});
+}, 10000);
+
+})();
+</script>
+</body>
+</html>

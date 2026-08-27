@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Hedge Fund</title>
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0a0e17; --surface: #111827; --surface2: #1a2236; --border: #1e2a3a;
+            --text: #e2e8f0; --text-dim: #64748b; --green: #22c55e; --red: #ef4444;
+            --blue: #3b82f6; --yellow: #eab308; --purple: #a855f7;
+        }
+        body { font-family: 'SF Mono', 'Cascadia Code', monospace; background: var(--bg); color: var(--text); font-size: 13px; }
+        .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: var(--surface); border-bottom: 1px solid var(--border); }
+        .logo { font-size: 18px; font-weight: 700; color: var(--purple); }
+        .instruments { display: flex; gap: 12px; flex-wrap: wrap; }
+        .inst-tag { padding: 4px 10px; background: var(--surface2); border-radius: 4px; font-size: 12px; }
+        .inst-tag span { color: var(--yellow); font-weight: 600; }
+        .stats-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; background: var(--border); }
+        .stat-card { background: var(--surface); padding: 14px 18px; text-align: center; }
+        .stat-label { font-size: 10px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
+        .stat-value { font-size: 18px; font-weight: 700; }
+        .stat-value.positive { color: var(--green); }
+        .stat-value.negative { color: var(--red); }
+        #chart-container { width: 100%; height: 380px; background: var(--bg); border-bottom: 1px solid var(--border); }
+        .panels { display: grid; grid-template-columns: 220px 1fr 1fr; gap: 1px; background: var(--border); min-height: 300px; }
+        .panel { background: var(--surface); display: flex; flex-direction: column; }
+        .panel-header { padding: 10px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-dim); border-bottom: 1px solid var(--border); background: var(--surface2); }
+        .panel-body { padding: 0; flex: 1; overflow-y: auto; }
+        .indicator-row { display: flex; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+        .pos-table, .trade-table { width: 100%; border-collapse: collapse; }
+        .pos-table th, .trade-table th { padding: 8px 12px; text-align: left; font-size: 10px; text-transform: uppercase; color: var(--text-dim); background: var(--surface2); }
+        .pos-table td, .trade-table td { padding: 7px 12px; border-bottom: 1px solid var(--border); font-size: 12px; }
+        .side-long { color: var(--green); font-weight: 600; }
+        .side-short { color: var(--red); font-weight: 600; }
+        .agent-tag { padding: 2px 6px; border-radius: 3px; font-size: 10px; background: rgba(168,85,247,0.2); color: var(--purple); }
+        .no-data { padding: 20px; text-align: center; color: var(--text-dim); font-style: italic; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <span class="logo">AI Hedge Fund</span>
+        <span style="margin-left:16px;color:var(--text-dim)">Multi-agent · BTC · ETH</span>
+    </div>
+    <div class="instruments" id="instruments">
+        <div class="inst-tag">BTC 5m: <span id="btc5">--</span></div>
+        <div class="inst-tag">BTC 15m: <span id="btc15">--</span></div>
+        <div class="inst-tag">ETH 5m: <span id="eth5">--</span></div>
+        <div class="inst-tag">ETH 15m: <span id="eth15">--</span></div>
+    </div>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card"><div class="stat-label">Balance</div><div class="stat-value" id="stat-balance">$0</div></div>
+    <div class="stat-card"><div class="stat-label">Equity</div><div class="stat-value" id="stat-equity">$0</div></div>
+    <div class="stat-card"><div class="stat-label">Unrealized P&L</div><div class="stat-value" id="stat-unrealized">$0</div></div>
+    <div class="stat-card"><div class="stat-label">Realized P&L</div><div class="stat-value" id="stat-realized">$0</div></div>
+    <div class="stat-card"><div class="stat-label">Return</div><div class="stat-value" id="stat-return">0%</div></div>
+    <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value" id="stat-winrate">0%</div></div>
+</div>
+
+<div id="chart-container"></div>
+
+<div class="panels">
+    <div class="panel">
+        <div class="panel-header">Agent Allocation</div>
+        <div class="panel-body" id="allocator-panel">
+            <div class="no-data">Waiting...</div>
+        </div>
+    </div>
+    <div class="panel">
+        <div class="panel-header">Open Positions (<span id="pos-count">0</span>)</div>
+        <div class="panel-body" id="positions-panel">
+            <div class="no-data">No positions</div>
+        </div>
+    </div>
+    <div class="panel">
+        <div class="panel-header">Trade History (<span id="trade-count">0</span>)</div>
+        <div class="panel-body" id="trades-panel">
+            <div class="no-data">No trades</div>
+        </div>
+    </div>
+</div>
+
+<script>
+let chart, candleSeries;
+
+function initChart() {
+    if (typeof LightweightCharts === "undefined") {
+        console.warn("LightweightCharts not loaded; chart disabled");
+        return;
+    }
+    const container = document.getElementById("chart-container");
+    chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth, height: container.clientHeight,
+        layout: {
+            backgroundColor: "#0a0e17",
+            textColor: "#64748b",
+            fontSize: 11,
+            attributionLogo: false,
+        },
+        grid: { vertLines: { color: "#1e2a3a" }, horzLines: { color: "#1e2a3a" } },
+        rightPriceScale: {
+            borderColor: "#1e2a3a",
+            scaleMargins: { top: 0.1, bottom: 0.2 },
+        },
+        leftPriceScale: { borderColor: "#1e2a3a", visible: false },
+        timeScale: {
+            borderColor: "#1e2a3a",
+            timeVisible: true,
+            secondsVisible: false,
+        },
+        crosshair: {
+            vertLine: { color: "#334155", labelBackgroundColor: "#1e293b" },
+            horzLine: { color: "#334155", labelBackgroundColor: "#1e293b" },
+        },
+    });
+    candleSeries = chart.addCandlestickSeries({
+        upColor: "#22c55e", downColor: "#ef4444",
+        borderUpColor: "#22c55e", borderDownColor: "#ef4444",
+        wickUpColor: "#22c55e", wickDownColor: "#ef4444",
+    });
+    window.addEventListener("resize", () => chart.applyOptions({ width: container.clientWidth, height: container.clientHeight }));
+}
+
+function formatMoney(val) {
+    if (val == null) return "$0.00";
+    const s = val >= 0 ? "" : "-";
+    return s + "$" + Math.abs(val).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function setPnlClass(el, val) {
+    el.classList.remove("positive", "negative");
+    if (val > 0) el.classList.add("positive");
+    else if (val < 0) el.classList.add("negative");
+}
+
+function processUpdate(data) {
+    if (!data) return;
+
+    if (data.instruments) {
+        for (const i of data.instruments) {
+            const id = (i.symbol.replace("/","").toLowerCase().slice(0,3) + (i.timeframe.replace("m",""))).replace("btc","btc").replace("eth","eth");
+            const key = i.symbol.includes("BTC") ? (i.timeframe === "5m" ? "btc5" : "btc15") : (i.timeframe === "5m" ? "eth5" : "eth15");
+            const el = document.getElementById(key);
+            if (el) el.textContent = "$" + (i.price || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
+        }
+    }
+    if (data.price > 0) {
+        const p = document.getElementById("btc5");
+        if (p) p.textContent = "$" + data.price.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    }
+
+    if (data.engine) {
+        const e = data.engine;
+        document.getElementById("stat-balance").textContent = formatMoney(e.balance);
+        document.getElementById("stat-equity").textContent = formatMoney(e.equity);
+        const u = document.getElementById("stat-unrealized");
+        u.textContent = formatMoney(e.unrealized_pnl);
+        setPnlClass(u, e.unrealized_pnl);
+        const r = document.getElementById("stat-realized");
+        r.textContent = formatMoney(e.realized_pnl);
+        setPnlClass(r, e.realized_pnl);
+        const ret = document.getElementById("stat-return");
+        ret.textContent = (e.return_pct != null ? e.return_pct.toFixed(2) : "0") + "%";
+        setPnlClass(ret, e.return_pct || 0);
+        document.getElementById("stat-winrate").textContent = (e.win_rate != null ? e.win_rate.toFixed(1) : "0") + "%";
+        updatePositions(e.positions || []);
+        updateTrades(e.trades || []);
+    }
+
+    if (data.allocator_weights) {
+        const w = data.allocator_weights;
+        document.getElementById("allocator-panel").innerHTML = Object.entries(w).map(([k, v]) =>
+            `<div class="indicator-row"><span class="ind-label">${k}</span><span class="ind-value">${(v * 100).toFixed(1)}%</span></div>`
+        ).join("");
+    }
+
+    if (data.candles && data.candles.length > 0 && candleSeries && typeof candleSeries.setData === "function") {
+        const seen = new Map();
+        for (const c of data.candles) seen.set(c.time, c);
+        const candles = Array.from(seen.values()).sort((a, b) => a.time - b.time);
+        candleSeries.setData(candles);
+        if (data.markers && data.markers.length > 0)
+            candleSeries.setMarkers([...data.markers].sort((a, b) => a.time - b.time));
+        if (chart) chart.timeScale().scrollToRealTime();
+    }
+}
+
+function updatePositions(positions) {
+    document.getElementById("pos-count").textContent = positions.length;
+    const c = document.getElementById("positions-panel");
+    if (!positions.length) { c.innerHTML = '<div class="no-data">No open positions</div>'; return; }
+    c.innerHTML = `<table class="pos-table"><thead><tr><th>Agent</th><th>Side</th><th>Symbol</th><th>Entry</th><th>SL</th><th>TP</th><th>UPnL</th></tr></thead><tbody>` +
+        positions.map(p => `<tr>
+            <td><span class="agent-tag">${p.agent_id || '-'}</span></td>
+            <td class="${p.side === 'long' ? 'side-long' : 'side-short'}">${p.side.toUpperCase()}</td>
+            <td>${p.symbol}</td>
+            <td>${p.entry_price.toLocaleString()}</td>
+            <td>${p.stop_loss.toLocaleString()}</td>
+            <td>${p.take_profit.toLocaleString()}</td>
+            <td class="${p.unrealized_pnl >= 0 ? 'stat-value positive' : 'stat-value negative'}">${formatMoney(p.unrealized_pnl)}</td>
+        </tr>`).join("") + "</tbody></table>";
+}
+
+function updateTrades(trades) {
+    document.getElementById("trade-count").textContent = trades.length;
+    const c = document.getElementById("trades-panel");
+    if (!trades.length) { c.innerHTML = '<div class="no-data">No trades yet</div>'; return; }
+    c.innerHTML = `<table class="trade-table"><thead><tr><th>Agent</th><th>Side</th><th>Entry</th><th>Exit</th><th>PnL</th><th>Reason</th></tr></thead><tbody>` +
+        [...trades].reverse().map(t => `<tr>
+            <td><span class="agent-tag">${t.agent_id || '-'}</span></td>
+            <td class="${t.side === 'long' ? 'side-long' : 'side-short'}">${t.side.toUpperCase()}</td>
+            <td>${t.entry_price.toLocaleString()}</td>
+            <td>${t.exit_price.toLocaleString()}</td>
+            <td class="${t.pnl >= 0 ? 'stat-value positive' : 'stat-value negative'}">${formatMoney(t.pnl)}</td>
+            <td>${t.reason.replace('_',' ')}</td>
+        </tr>`).join("") + "</tbody></table>";
+}
+
+async function fetchState() {
+    try {
+        const r = await fetch("/api/fund/state");
+        if (r.ok) processUpdate(await r.json());
+    } catch (_) {}
+}
+
+initChart();
+try {
+    const socket = io();
+    socket.on("update", processUpdate);
+} catch (_) {}
+fetchState();
+setInterval(fetchState, 3000);
+</script>
+</body>
+</html>

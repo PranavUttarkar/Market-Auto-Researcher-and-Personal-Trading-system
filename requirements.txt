@@ -1,0 +1,9 @@
+ccxt
+flask
+flask-socketio
+numpy
+openai
+yfinance
+requests
+tavily-python
+python-dotenv

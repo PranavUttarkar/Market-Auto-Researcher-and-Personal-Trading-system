@@ -1,0 +1,24 @@
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+*.log
+.DS_Store
+Thumbs.db
+
+# Runtime research notebook (hypotheses, Elo, citations)
+data/research_notebook.json
+data/research_skills.json
+research/state/
+
