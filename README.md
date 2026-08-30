@@ -1,33 +1,31 @@
-# crypto-trader
+# Personal Trading + Market + Macro conditions Auto-Researcher
 
-Autonomous paper-trading system. Live Kraken / Yahoo data in, cost-modeled fills out. Ran unattended on a DigitalOcean droplet **26 Feb 2026 → July 2026** (~5 months) under `systemd` (`Restart=always`).
+Autonomous paper-trading trial system with data and cost-modeling and continuous research system that ran unattended on a DigitalOcean droplet **26 Feb 2026 → July 2026** (~5 months) under `systemd` (`Restart=always`).
 
-Paper book over that window: **+13%**, crypto trend sleeve plus longer-horizon names the research desk promoted (not a fixed mega-cap list). Fills include slippage and fees. Not live capital.
+
 
 ```
 research cycle (hours)
-  crowd (WSB/DD) + theses (trucking / HBM / oil / power)
+  crowd pulling market sentiment from forums (WSB/DD) + macro theses research across industries like (trucking / HBM / oil / power)
        → generate hypotheses (conditioned on retrieved memories)
        → retrieve (Tavily, Reddit, filings/news)
        → independent critique → Elo debate → evolve children
-       → DCF check → promote tickers into the book
+       → Discounted Cash Flow checks which find and promote tickers into the book
        → write successful procedures back into the playbook
+```
 
 trading tick (60s)
   1d / 4h OHLCV → Donchian + TS momentum (crypto / quant)
-               → DCF/thesis longs (warren) / thematic (macro)
-               → risk officer → PaperEngine (slip + fee + R)
-```
+               → DCF/thesis longs ("warren" agent) / thematic (macro)
 
-Names are an *output* of the notebook. `fund/ai_config.py` does not list AAPL/NVDA/MSFT as the universe.
-
+           → risk check → PaperEngine Trade (slip + fee + R)
 ---
 
 ## Research desk
 
-`python ai_hedge_fund.py` → http://127.0.0.1:5002
+`python ai_hedge_fund.py` → to view moves open http://127.0.0.1:5002 on your machine
 
-Persistent state: `data/research_notebook.json` (hypotheses, evidence, citations, Elo, status open/supported/refuted) and `data/research_skills.json` (playbook that grows).
+Persistent state will be stored in: `data/research_notebook.json` (hypotheses, evidence, citations, Elo, status open/supported/refuted) and `data/research_skills.json` (playbook grows as u keep the agent running).
 
 Each cycle in `research/loop.py`:
 
@@ -38,13 +36,13 @@ Each cycle in `research/loop.py`:
 5. **Evolve** — top-Elo pair is combined into a child hypothesis (`parent_ids` set).
 6. **DCF** — `research/dcf.py` 2-stage FCFF from yfinance. MOS ≥ 15% can promote; pre-FCF names stay qualitative (no fake value). Supported claims distill a new playbook skill.
 
-Without API keys the same objects still run: crowd + thesis seeds + DCF heuristics.
+Without API keys only these  objects will run: crowd + thesis seeds + DCF heuristics.
 
-Warren only longs desk-promoted names. Macro is restricted to oil/trucking/memory/power/GLD. Quant and Satoshi do not LLM-pick 15m RSI; they run `TrendFollowAgent`.
+Warren only longs desk-promoted names (Top of S&P). Macro is restricted to oil/trucking/memory/power/GLD. Quant and Satoshi do not LLM-pick 15m RSI; they run `TrendFollowAgent`.
 
 ---
 
-## Crypto trend (not 5m)
+## Crypto trend tracker
 
 `python main.py` → http://127.0.0.1:5000 — BTC/USDT **1d**.
 
